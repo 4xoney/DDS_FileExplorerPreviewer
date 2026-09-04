@@ -8,7 +8,7 @@
     <Nullable>disable</Nullable>
     <RootNamespace>DdsThumbnailProvider</RootNamespace>
     <AssemblyName>DdsThumbnailProvider</AssemblyName>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
     <Authors>4xon</Authors>
     <Company>4xon</Company>
     <Product>DDS Thumbnail Provider</Product>

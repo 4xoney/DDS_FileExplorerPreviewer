@@ -11,7 +11,7 @@ if errorlevel 1 (
 set "INSTALL_DIR=%ProgramFiles%\DDS Thumbnail Provider"
 set "LEGACY_INSTALL_DIR=%ProgramFiles%\DdsThumbnailProvider"
 set "PROVIDER_DLL="
-set "SRM=%INSTALL_DIR%\ServerRegistrationManager.exe"
+set "SRM="
 
 for /f "tokens=2,*" %%A in ('reg.exe query "HKLM\SOFTWARE\Classes\CLSID\{4AB9224A-8A69-44A2-B65A-F1BB0D7AF38E}\InprocServer32" /v CodeBase 2^>nul ^| findstr.exe /I /C:"CodeBase"') do set "PROVIDER_DLL=%%B"
 if defined PROVIDER_DLL (
@@ -20,7 +20,8 @@ if defined PROVIDER_DLL (
     set "PROVIDER_DLL=!PROVIDER_DLL:%%20= !"
 )
 
-if not exist "%SRM%" if defined PROVIDER_DLL for %%I in ("!PROVIDER_DLL!") do if exist "%%~dpIServerRegistrationManager.exe" set "SRM=%%~dpIServerRegistrationManager.exe"
+if defined PROVIDER_DLL for %%I in ("!PROVIDER_DLL!") do if exist "%%~dpIServerRegistrationManager.exe" set "SRM=%%~dpIServerRegistrationManager.exe"
+if not defined SRM if exist "%INSTALL_DIR%\ServerRegistrationManager.exe" set "SRM=%INSTALL_DIR%\ServerRegistrationManager.exe"
 
 if defined PROVIDER_DLL if exist "!PROVIDER_DLL!" if exist "%SRM%" (
     "%SRM%" uninstall "!PROVIDER_DLL!" -os64

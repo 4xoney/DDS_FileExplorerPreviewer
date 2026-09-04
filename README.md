@@ -27,14 +27,14 @@ The build output is under `bin\x64\Release\net48` and contains the provider plus
 For distribution, run `scripts\build-installer.bat` after building the Release configuration. It requires Inno Setup 7 and creates one distributable file:
 
 ```text
-dist\DDS-Thumbnail-Provider-Setup-1.0.4.exe
+dist\DDS-Thumbnail-Provider-Setup-1.0.5.exe
 ```
 
-The installer provides a standard elevated Windows wizard, upgrades an existing installation, registers the provider directly for `.dds`, notifies Explorer of the association change, and adds a normal Programs and Features uninstall entry. It does not terminate or restart the Windows shell. Each release uses a separate payload directory, so an upgraded shell-extension DLL is never overwritten while Windows still has it mapped; obsolete in-use files are safely removed at the next reboot. Recipients need only the generated `.exe`; they do not need the source tree, build tools, batch scripts, or dependency files separately.
+The installer provides a standard elevated Windows wizard, upgrades an existing installation, registers the provider directly for `.dds`, notifies Explorer of the association change, and adds a normal Programs and Features uninstall entry. It does not terminate or restart the Windows shell. Each release uses a separate payload directory, so an upgraded shell-extension DLL is never overwritten while Windows still has it mapped. During uninstall, the provider is unregistered and only the disposable Windows thumbnail host using its DLLs is stopped, allowing the complete installation directory to be removed immediately. Recipients need only the generated `.exe`; they do not need the source tree, build tools, batch scripts, or dependency files separately.
 
 ## Uninstall
 
-Run `scripts\uninstall.bat`. It unregisters the extension and removes its installed. A DLL that is still mapped by Windows is scheduled for removal at the next restart.
+Run `scripts\uninstall.bat`. It unregisters the extension, releases its DLLs from the isolated Windows thumbnail host, and removes the installation directory. `explorer.exe` is never terminated or restarted. Cleanup is restricted to files owned by this application; unrecognized files, directories, and reparse points are preserved and reported. If an unrelated process has loaded one of the application's private DLL copies, that process is left running and the owned DLL is scheduled for removal at the next restart.
 
 If Explorer continues showing an old or generic thumbnail during development, run `scripts\clear-thumbnail-cache.bat`. It requests a refresh without stopping Explorer; sign out and back in if Windows keeps an old cache file locked.
 

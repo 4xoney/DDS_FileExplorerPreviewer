@@ -3,7 +3,7 @@ setlocal EnableExtensions
 
 set "PROJECT_DIR=%~dp0.."
 set "ISCC="
-set "APP_VERSION=1.0.4"
+set "APP_VERSION=1.0.5"
 set "ASSEMBLY_VERSION="
 
 where ISCC.exe >nul 2>&1

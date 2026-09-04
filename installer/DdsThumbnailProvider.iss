@@ -1,5 +1,5 @@
 #define AppName "DDS Thumbnail Provider"
-#define AppVersion "1.0.4"
+#define AppVersion "1.0.5"
 #define AppPublisher "4xon"
 #define ProviderClsid "{4AB9224A-8A69-44A2-B65A-F1BB0D7AF38E}"
 #define ThumbnailHandlerIid "{e357fccd-a995-4576-b01f-234630154e96}"
@@ -48,12 +48,14 @@ VersionInfoCopyright=Copyright (C) 2026 {#AppPublisher}
 Source: "..\bin\x64\Release\net48\DdsThumbnailProvider.dll"; DestDir: "{app}\{#AppVersion}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "..\bin\x64\Release\net48\Pfim.dll"; DestDir: "{app}\{#AppVersion}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "..\bin\x64\Release\net48\SharpShell.dll"; DestDir: "{app}\{#AppVersion}"; Flags: ignoreversion restartreplace uninsrestartdelete
-Source: "..\bin\x64\Release\net48\ServerRegistrationManager.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "..\bin\x64\Release\net48\ServerRegistrationManager.exe"; DestDir: "{app}\{#AppVersion}"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "..\scripts\remove-installation.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [UninstallRun]
-Filename: "{app}\ServerRegistrationManager.exe"; Parameters: "uninstall ""{app}\{#AppVersion}\DdsThumbnailProvider.dll"" -os64"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterDdsThumbnailProvider"
+Filename: "{app}\{#AppVersion}\ServerRegistrationManager.exe"; Parameters: "uninstall ""{app}\{#AppVersion}\DdsThumbnailProvider.dll"" -os64"; WorkingDir: "{app}\{#AppVersion}"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterDdsThumbnailProvider"
+Filename: "{sysnative}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\remove-installation.ps1"" -InstallDirectory ""{app}"" -ReleaseLocksOnly"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "ReleaseDdsThumbnailProviderLocks"
 
 [Code]
 const
@@ -85,13 +87,13 @@ end;
 function UnregisterExistingProvider: Boolean;
 var
   CodeBase: String;
+  ProviderDirectory: String;
   ResultCode: Integer;
   RegistrationManager: String;
+  StagingDirectory: String;
   ProviderDll: String;
 begin
   Result := True;
-  RegistrationManager := ExpandConstant('{app}\ServerRegistrationManager.exe');
-
   { Read the currently registered CodeBase so upgrades work across both the old
     shared layout and the new versioned layout. }
   if RegQueryStringValue(
@@ -109,18 +111,48 @@ begin
   else
     ProviderDll := ExpandConstant('{app}\DdsThumbnailProvider.dll');
 
-  { The first installer stored the registration tool beside the provider. }
+  RegistrationManager := ExtractFileDir(ProviderDll) + '\ServerRegistrationManager.exe';
+
+  { Version 1.0.4 stored the registration tool at the installation root. }
   if not FileExists(RegistrationManager) then
-    RegistrationManager := ExtractFileDir(ProviderDll) + '\ServerRegistrationManager.exe';
+    RegistrationManager := ExpandConstant('{app}\ServerRegistrationManager.exe');
 
   if FileExists(RegistrationManager) and FileExists(ProviderDll) then
-    Result := Exec(
-      RegistrationManager,
-      'uninstall "' + ProviderDll + '" -os64',
-      ExpandConstant('{app}'),
-      SW_HIDE,
-      ewWaitUntilTerminated,
-      ResultCode) and (ResultCode = 0);
+  begin
+    { Stage the old registration files together. Version 1.0.4 placed the
+      manager away from SharpShell.dll, so invoking that installed copy in
+      place can fail before an upgrade has a chance to repair it. }
+    ProviderDirectory := ExtractFileDir(ProviderDll);
+    StagingDirectory := ExpandConstant('{tmp}\DdsThumbnailRegistration');
+    Result := ForceDirectories(StagingDirectory) and
+      CopyFile(
+        RegistrationManager,
+        StagingDirectory + '\ServerRegistrationManager.exe',
+        False) and
+      CopyFile(
+        ProviderDll,
+        StagingDirectory + '\DdsThumbnailProvider.dll',
+        False) and
+      CopyFile(
+        ProviderDirectory + '\SharpShell.dll',
+        StagingDirectory + '\SharpShell.dll',
+        False);
+
+    if Result and FileExists(ProviderDirectory + '\Pfim.dll') then
+      Result := CopyFile(
+        ProviderDirectory + '\Pfim.dll',
+        StagingDirectory + '\Pfim.dll',
+        False);
+
+    if Result then
+      Result := Exec(
+        StagingDirectory + '\ServerRegistrationManager.exe',
+        'uninstall "' + StagingDirectory + '\DdsThumbnailProvider.dll" -os64',
+        StagingDirectory,
+        SW_HIDE,
+        ewWaitUntilTerminated,
+        ResultCode) and (ResultCode = 0);
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -141,7 +173,7 @@ var
   RegisteredClsid: String;
   RegistryPath: String;
 begin
-  RegistrationManager := ExpandConstant('{app}\ServerRegistrationManager.exe');
+  RegistrationManager := ExpandConstant('{app}\{#AppVersion}\ServerRegistrationManager.exe');
   ProviderDll := ExpandConstant('{app}\{#AppVersion}\DdsThumbnailProvider.dll');
   Result := Exec(
     RegistrationManager,
@@ -179,7 +211,7 @@ begin
     if not RegisterProvider then
     begin
       Exec(
-        ExpandConstant('{app}\ServerRegistrationManager.exe'),
+        ExpandConstant('{app}\{#AppVersion}\ServerRegistrationManager.exe'),
         'uninstall "' + ExpandConstant('{app}\{#AppVersion}\DdsThumbnailProvider.dll') + '" -os64',
         ExpandConstant('{app}'),
         SW_HIDE,
