@@ -30,5 +30,5 @@ if not "%BUILD_RESULT%"=="0" exit /b %BUILD_RESULT%
 
 echo.
 echo Installer created:
-echo %PROJECT_DIR%\dist\DDS-Thumbnail-Provider-Setup-1.0.2.exe
+echo %PROJECT_DIR%\dist\DDS-Thumbnail-Provider-Setup-1.0.3.exe
 exit /b 0

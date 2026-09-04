@@ -1,5 +1,5 @@
 #define AppName "DDS Thumbnail Provider"
-#define AppVersion "1.0.2"
+#define AppVersion "1.0.3"
 #define AppPublisher "4xon"
 #define ProviderClsid "{4AB9224A-8A69-44A2-B65A-F1BB0D7AF38E}"
 #define ThumbnailHandlerIid "{e357fccd-a995-4576-b01f-234630154e96}"
@@ -32,6 +32,8 @@ Uninstallable=yes
 UninstallDisplayName={#AppName}
 ChangesAssociations=yes
 RestartIfNeededByRun=no
+CloseApplications=no
+RestartApplications=no
 VersionInfoVersion={#AppVersion}.0
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} installer
@@ -40,26 +42,21 @@ VersionInfoProductVersion={#AppVersion}.0
 VersionInfoCopyright=Copyright (C) 2026 {#AppPublisher}
 
 [Files]
-Source: "..\bin\x64\Release\net48\DdsThumbnailProvider.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\bin\x64\Release\net48\Pfim.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\bin\x64\Release\net48\SharpShell.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\bin\x64\Release\net48\ServerRegistrationManager.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\bin\x64\Release\net48\DdsThumbnailProvider.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "..\bin\x64\Release\net48\Pfim.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "..\bin\x64\Release\net48\SharpShell.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "..\bin\x64\Release\net48\ServerRegistrationManager.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [UninstallRun]
 Filename: "{app}\ServerRegistrationManager.exe"; Parameters: "uninstall ""{app}\DdsThumbnailProvider.dll"" -os64"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterDdsThumbnailProvider"
-Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM explorer.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopExplorerForDdsThumbnailProviderRemoval"
 
 [Code]
 const
   DotNet48Release = 528040;
   ProviderClsid = '{#ProviderClsid}';
   ThumbnailHandlerIid = '{#ThumbnailHandlerIid}';
-
-var
-  ExplorerWasStopped: Boolean;
-  ExplorerWasRestarted: Boolean;
 
 procedure SHChangeNotify(
   EventId: LongWord;
@@ -87,60 +84,6 @@ begin
       '.NET Framework 4.8 or newer is required. Install current Windows updates, then run this installer again.',
       mbError,
       MB_OK);
-end;
-
-procedure StopExplorer;
-var
-  ResultCode: Integer;
-begin
-  Exec(
-    ExpandConstant('{sys}\taskkill.exe'),
-    '/F /IM explorer.exe',
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode);
-  ExplorerWasStopped := True;
-  Sleep(500);
-end;
-
-procedure StartExplorer;
-var
-  ResultCode: Integer;
-begin
-  if ExplorerWasStopped and not ExplorerWasRestarted then
-  begin
-    if not ExecAsOriginalUser(
-      ExpandConstant('{sys}\explorer.exe'),
-      '',
-      '',
-      SW_SHOWNORMAL,
-      ewNoWait,
-      ResultCode) then
-      Exec(
-        ExpandConstant('{sys}\explorer.exe'),
-        '',
-        '',
-        SW_SHOWNORMAL,
-        ewNoWait,
-        ResultCode);
-    ExplorerWasRestarted := True;
-  end;
-end;
-
-procedure ClearThumbnailCache;
-var
-  ResultCode: Integer;
-  CachePattern: String;
-begin
-  CachePattern := ExpandConstant('{localappdata}\Microsoft\Windows\Explorer\thumbcache_*.db');
-  Exec(
-    ExpandConstant('{cmd}'),
-    '/C del /F /Q "' + CachePattern + '"',
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode);
 end;
 
 function UnregisterExistingProvider: Boolean;
@@ -171,8 +114,6 @@ begin
     Result := 'The existing DDS thumbnail provider could not be unregistered. Close File Explorer windows and try again.';
     Exit;
   end;
-
-  StopExplorer;
 end;
 
 function RegisterProvider: Boolean;
@@ -227,26 +168,14 @@ begin
       RaiseException('The DDS thumbnail provider could not be registered. No shell extension was installed.');
     end;
 
-    ClearThumbnailCache;
     NotifyAssociationChanged;
-  end
-  else if CurStep = ssDone then
-    StartExplorer;
-end;
-
-procedure DeinitializeSetup;
-begin
-  StartExplorer;
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usUninstall then
-    ExplorerWasStopped := True
-  else if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep = usPostUninstall then
   begin
-    ClearThumbnailCache;
     NotifyAssociationChanged;
-    StartExplorer;
   end;
 end;

@@ -27,10 +27,10 @@ The build output is under `bin\x64\Release\net48` and contains the provider plus
 For distribution, run `scripts\build-installer.bat` after building the Release configuration. It requires Inno Setup 7 and creates one distributable file:
 
 ```text
-dist\DDS-Thumbnail-Provider-Setup-1.0.2.exe
+dist\DDS-Thumbnail-Provider-Setup-1.0.3.exe
 ```
 
-The installer provides a standard elevated Windows wizard, upgrades an existing installation, registers the provider directly for `.dds`, clears Explorer's thumbnail cache, and adds a normal Programs and Features uninstall entry. Recipients need only the generated `.exe`; they do not need the source tree, build tools, batch scripts, or dependency files separately.
+The installer provides a standard elevated Windows wizard, upgrades an existing installation, registers the provider directly for `.dds`, notifies Explorer of the association change, and adds a normal Programs and Features uninstall entry. It does not terminate or restart the Windows shell. If an upgraded shell-extension file is already in use, Windows safely replaces it at the next reboot. Recipients need only the generated `.exe`; they do not need the source tree, build tools, batch scripts, or dependency files separately.
 
 ## Uninstall
 
@@ -81,6 +81,8 @@ dotnet run --project tests\DdsThumbnailProvider.Tests -c Release -- "C:\path\to\
 ```
 
 Version 1.0.2 fixes two issues found with mixed Cabal UI textures: the handler is now registered directly on `.dds` even when GIMP owns the file association, and Explorer's restricted COM stream is buffered before Pfim reads mipmap data.
+
+Version 1.0.3 no longer force-terminates Explorer during installation or removal. This prevents a partially restarted Windows shell from breaking the Start key and normal Alt+Tab behavior.
 
 ## Notes
 
