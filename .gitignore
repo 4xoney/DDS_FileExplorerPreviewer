@@ -1,0 +1,15 @@
+bin/
+obj/
+dist/
+.vs/
+*.user
+*.suo
+TestResults/
+
+# Never commit code-signing private keys or certificates.
+*.key
+*.pem
+*.pfx
+*.p12
+*.pvk
+*.snk

@@ -1,0 +1,252 @@
+#define AppName "DDS Thumbnail Provider"
+#define AppVersion "1.0.2"
+#define AppPublisher "4xon"
+#define ProviderClsid "{4AB9224A-8A69-44A2-B65A-F1BB0D7AF38E}"
+#define ThumbnailHandlerIid "{e357fccd-a995-4576-b01f-234630154e96}"
+
+[Setup]
+AppId={{96E8CF04-25B4-4A21-8FE9-91059714C2CD}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
+AppPublisher={#AppPublisher}
+AppPublisherURL=https://github.com/4xoney/DDS_FileExplorerPreviewer
+AppSupportURL=https://github.com/4xoney/DDS_FileExplorerPreviewer/issues
+AppUpdatesURL=https://github.com/4xoney/DDS_FileExplorerPreviewer/releases
+AppComments=Displays DDS image thumbnails in Windows File Explorer.
+DefaultDirName={autopf}\DDS Thumbnail Provider
+DefaultGroupName={#AppName}
+DisableProgramGroupPage=yes
+PrivilegesRequired=admin
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0.18362
+WizardStyle=modern
+Compression=lzma2/ultra64
+SolidCompression=yes
+LZMANumBlockThreads=4
+OutputDir=..\dist
+OutputBaseFilename=DDS-Thumbnail-Provider-Setup-{#AppVersion}
+SetupLogging=yes
+Uninstallable=yes
+UninstallDisplayName={#AppName}
+ChangesAssociations=yes
+RestartIfNeededByRun=no
+VersionInfoVersion={#AppVersion}.0
+VersionInfoCompany={#AppPublisher}
+VersionInfoDescription={#AppName} installer
+VersionInfoProductName={#AppName}
+VersionInfoProductVersion={#AppVersion}.0
+VersionInfoCopyright=Copyright (C) 2026 {#AppPublisher}
+
+[Files]
+Source: "..\bin\x64\Release\net48\DdsThumbnailProvider.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\bin\x64\Release\net48\Pfim.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\bin\x64\Release\net48\SharpShell.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\bin\x64\Release\net48\ServerRegistrationManager.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+
+[UninstallRun]
+Filename: "{app}\ServerRegistrationManager.exe"; Parameters: "uninstall ""{app}\DdsThumbnailProvider.dll"" -os64"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterDdsThumbnailProvider"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM explorer.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopExplorerForDdsThumbnailProviderRemoval"
+
+[Code]
+const
+  DotNet48Release = 528040;
+  ProviderClsid = '{#ProviderClsid}';
+  ThumbnailHandlerIid = '{#ThumbnailHandlerIid}';
+
+var
+  ExplorerWasStopped: Boolean;
+  ExplorerWasRestarted: Boolean;
+
+procedure SHChangeNotify(
+  EventId: LongWord;
+  Flags: LongWord;
+  Item1: LongWord;
+  Item2: LongWord);
+  external 'SHChangeNotify@shell32.dll stdcall';
+
+function IsDotNet48Installed: Boolean;
+var
+  ReleaseValue: Cardinal;
+begin
+  Result := RegQueryDWordValue(
+    HKEY_LOCAL_MACHINE,
+    'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full',
+    'Release',
+    ReleaseValue) and (ReleaseValue >= DotNet48Release);
+end;
+
+function InitializeSetup: Boolean;
+begin
+  Result := IsDotNet48Installed;
+  if not Result then
+    MsgBox(
+      '.NET Framework 4.8 or newer is required. Install current Windows updates, then run this installer again.',
+      mbError,
+      MB_OK);
+end;
+
+procedure StopExplorer;
+var
+  ResultCode: Integer;
+begin
+  Exec(
+    ExpandConstant('{sys}\taskkill.exe'),
+    '/F /IM explorer.exe',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode);
+  ExplorerWasStopped := True;
+  Sleep(500);
+end;
+
+procedure StartExplorer;
+var
+  ResultCode: Integer;
+begin
+  if ExplorerWasStopped and not ExplorerWasRestarted then
+  begin
+    if not ExecAsOriginalUser(
+      ExpandConstant('{sys}\explorer.exe'),
+      '',
+      '',
+      SW_SHOWNORMAL,
+      ewNoWait,
+      ResultCode) then
+      Exec(
+        ExpandConstant('{sys}\explorer.exe'),
+        '',
+        '',
+        SW_SHOWNORMAL,
+        ewNoWait,
+        ResultCode);
+    ExplorerWasRestarted := True;
+  end;
+end;
+
+procedure ClearThumbnailCache;
+var
+  ResultCode: Integer;
+  CachePattern: String;
+begin
+  CachePattern := ExpandConstant('{localappdata}\Microsoft\Windows\Explorer\thumbcache_*.db');
+  Exec(
+    ExpandConstant('{cmd}'),
+    '/C del /F /Q "' + CachePattern + '"',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode);
+end;
+
+function UnregisterExistingProvider: Boolean;
+var
+  ResultCode: Integer;
+  RegistrationManager: String;
+  ProviderDll: String;
+begin
+  Result := True;
+  RegistrationManager := ExpandConstant('{app}\ServerRegistrationManager.exe');
+  ProviderDll := ExpandConstant('{app}\DdsThumbnailProvider.dll');
+
+  if FileExists(RegistrationManager) and FileExists(ProviderDll) then
+    Result := Exec(
+      RegistrationManager,
+      'uninstall "' + ProviderDll + '" -os64',
+      ExpandConstant('{app}'),
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode) and (ResultCode = 0);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if not UnregisterExistingProvider then
+  begin
+    Result := 'The existing DDS thumbnail provider could not be unregistered. Close File Explorer windows and try again.';
+    Exit;
+  end;
+
+  StopExplorer;
+end;
+
+function RegisterProvider: Boolean;
+var
+  ResultCode: Integer;
+  RegistrationManager: String;
+  ProviderDll: String;
+  RegisteredClsid: String;
+  RegistryPath: String;
+begin
+  RegistrationManager := ExpandConstant('{app}\ServerRegistrationManager.exe');
+  ProviderDll := ExpandConstant('{app}\DdsThumbnailProvider.dll');
+  Result := Exec(
+    RegistrationManager,
+    'install "' + ProviderDll + '" -codebase -os64',
+    ExpandConstant('{app}'),
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) and (ResultCode = 0);
+
+  if Result then
+  begin
+    RegistryPath := 'SOFTWARE\Classes\.dds\ShellEx\' + ThumbnailHandlerIid;
+    Result := RegQueryStringValue(
+      HKEY_LOCAL_MACHINE_64,
+      RegistryPath,
+      '',
+      RegisteredClsid) and (CompareText(RegisteredClsid, ProviderClsid) = 0);
+  end;
+end;
+
+procedure NotifyAssociationChanged;
+begin
+  SHChangeNotify($08000000, 0, 0, 0);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    if not RegisterProvider then
+    begin
+      Exec(
+        ExpandConstant('{app}\ServerRegistrationManager.exe'),
+        'uninstall "' + ExpandConstant('{app}\DdsThumbnailProvider.dll') + '" -os64',
+        ExpandConstant('{app}'),
+        SW_HIDE,
+        ewWaitUntilTerminated,
+        ResultCode);
+      RaiseException('The DDS thumbnail provider could not be registered. No shell extension was installed.');
+    end;
+
+    ClearThumbnailCache;
+    NotifyAssociationChanged;
+  end
+  else if CurStep = ssDone then
+    StartExplorer;
+end;
+
+procedure DeinitializeSetup;
+begin
+  StartExplorer;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    ExplorerWasStopped := True
+  else if CurUninstallStep = usPostUninstall then
+  begin
+    ClearThumbnailCache;
+    NotifyAssociationChanged;
+    StartExplorer;
+  end;
+end;

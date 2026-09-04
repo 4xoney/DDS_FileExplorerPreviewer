@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <RootNamespace>DdsThumbnailProvider</RootNamespace>
+    <AssemblyName>DdsThumbnailProvider</AssemblyName>
+    <Version>1.0.2</Version>
+    <Authors>4xon</Authors>
+    <Company>4xon</Company>
+    <Product>DDS Thumbnail Provider</Product>
+    <Description>Displays DDS image thumbnails in Windows File Explorer.</Description>
+    <Copyright>Copyright © 2026 4xon</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/4xoney/DDS_FileExplorerPreviewer</RepositoryUrl>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Pfim" Version="0.11.4" />
+    <PackageReference Include="SharpShell" Version="2.7.2" />
+    <PackageReference Include="ServerRegistrationManager" Version="2.7.2"
+                      GeneratePathProperty="true"
+                      ExcludeAssets="compile;runtime"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <Target Name="CopyServerRegistrationManager" AfterTargets="Build">
+    <Copy SourceFiles="$(PkgServerRegistrationManager)\lib\net45\ServerRegistrationManager.exe"
+          DestinationFolder="$(TargetDir)" />
+  </Target>
+</Project>
