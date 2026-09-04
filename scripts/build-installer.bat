@@ -3,6 +3,8 @@ setlocal EnableExtensions
 
 set "PROJECT_DIR=%~dp0.."
 set "ISCC="
+set "APP_VERSION=1.0.4"
+set "ASSEMBLY_VERSION="
 
 where ISCC.exe >nul 2>&1
 if not errorlevel 1 set "ISCC=ISCC.exe"
@@ -21,6 +23,13 @@ if not exist "%PROJECT_DIR%\bin\x64\Release\net48\DdsThumbnailProvider.dll" (
     exit /b 1
 )
 
+for /f "usebackq delims=" %%V in (`powershell.exe -NoProfile -Command "[Reflection.AssemblyName]::GetAssemblyName('%PROJECT_DIR%\bin\x64\Release\net48\DdsThumbnailProvider.dll').Version.ToString()"`) do set "ASSEMBLY_VERSION=%%V"
+if not "%ASSEMBLY_VERSION%"=="%APP_VERSION%.0" (
+    echo ERROR: Release build version is %ASSEMBLY_VERSION%; installer version is %APP_VERSION%.
+    echo Run scripts\build-release.bat before building the installer.
+    exit /b 1
+)
+
 pushd "%PROJECT_DIR%\installer"
 "%ISCC%" "DdsThumbnailProvider.iss"
 set "BUILD_RESULT=%ERRORLEVEL%"
@@ -30,5 +39,5 @@ if not "%BUILD_RESULT%"=="0" exit /b %BUILD_RESULT%
 
 echo.
 echo Installer created:
-echo %PROJECT_DIR%\dist\DDS-Thumbnail-Provider-Setup-1.0.3.exe
+echo %PROJECT_DIR%\dist\DDS-Thumbnail-Provider-Setup-%APP_VERSION%.exe
 exit /b 0

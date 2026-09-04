@@ -17,7 +17,7 @@ Download the latest installer from [GitHub Releases](https://github.com/4xoney/D
 ## Build and install
 
 1. Run `scripts\build-release.bat`.
-2. Run `scripts\install.bat`. It requests administrator permission, copies the release to `%ProgramFiles%\DdsThumbnailProvider`, registers the x64 shell extension, and restarts Explorer.
+2. Run `scripts\install.bat`. It requests administrator permission, copies the release to a new deployment directory under `%ProgramFiles%\DDS Thumbnail Provider`, and registers the x64 shell extension.
 3. Open a folder containing `.dds` files and select Medium, Large, or Extra large icons.
 
 The build output is under `bin\x64\Release\net48` and contains the provider plus its runtime dependencies and SharpShell's registration utility.
@@ -27,16 +27,16 @@ The build output is under `bin\x64\Release\net48` and contains the provider plus
 For distribution, run `scripts\build-installer.bat` after building the Release configuration. It requires Inno Setup 7 and creates one distributable file:
 
 ```text
-dist\DDS-Thumbnail-Provider-Setup-1.0.3.exe
+dist\DDS-Thumbnail-Provider-Setup-1.0.4.exe
 ```
 
-The installer provides a standard elevated Windows wizard, upgrades an existing installation, registers the provider directly for `.dds`, notifies Explorer of the association change, and adds a normal Programs and Features uninstall entry. It does not terminate or restart the Windows shell. If an upgraded shell-extension file is already in use, Windows safely replaces it at the next reboot. Recipients need only the generated `.exe`; they do not need the source tree, build tools, batch scripts, or dependency files separately.
+The installer provides a standard elevated Windows wizard, upgrades an existing installation, registers the provider directly for `.dds`, notifies Explorer of the association change, and adds a normal Programs and Features uninstall entry. It does not terminate or restart the Windows shell. Each release uses a separate payload directory, so an upgraded shell-extension DLL is never overwritten while Windows still has it mapped; obsolete in-use files are safely removed at the next reboot. Recipients need only the generated `.exe`; they do not need the source tree, build tools, batch scripts, or dependency files separately.
 
 ## Uninstall
 
-Run `scripts\uninstall.bat`. It unregisters the extension, removes its installed files, and restarts Explorer.
+Run `scripts\uninstall.bat`. It unregisters the extension and removes its installed. A DLL that is still mapped by Windows is scheduled for removal at the next restart.
 
-If Explorer continues showing an old or generic thumbnail during development, run `scripts\clear-thumbnail-cache.bat`.
+If Explorer continues showing an old or generic thumbnail during development, run `scripts\clear-thumbnail-cache.bat`. It requests a refresh without stopping Explorer; sign out and back in if Windows keeps an old cache file locked.
 
 ## Supported images and safety limits
 
@@ -57,6 +57,7 @@ scripts/
   build-installer.bat
   install.bat
   uninstall.bat
+  remove-installation.ps1
   clear-thumbnail-cache.bat
 tests/
   DdsThumbnailProvider.Tests/  Dependency-free smoke-test executable
@@ -72,17 +73,13 @@ The solution build also builds a small test executable. Run it with:
 dotnet run --project tests\DdsThumbnailProvider.Tests -c Release
 ```
 
-During development, rebuild and rerun `install.bat`. The script unregisters an existing copy before replacing it and clears Explorer's thumbnail cache so previously cached generic icons are regenerated.
+During development, rebuild and rerun `install.bat`. The script unregisters an existing copy and installs the new build to a fresh deployment directory, avoiding writes to any DLL that Windows still has mapped.
 
 To run the complete handler path against a real texture tree, pass its directory to the test executable:
 
 ```powershell
 dotnet run --project tests\DdsThumbnailProvider.Tests -c Release -- "C:\path\to\textures"
 ```
-
-Version 1.0.2 fixes two issues found with mixed Cabal UI textures: the handler is now registered directly on `.dds` even when GIMP owns the file association, and Explorer's restricted COM stream is buffered before Pfim reads mipmap data.
-
-Version 1.0.3 no longer force-terminates Explorer during installation or removal. This prevents a partially restarted Windows shell from breaking the Start key and normal Alt+Tab behavior.
 
 ## Notes
 

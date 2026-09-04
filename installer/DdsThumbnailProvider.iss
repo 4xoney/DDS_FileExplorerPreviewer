@@ -1,5 +1,5 @@
 #define AppName "DDS Thumbnail Provider"
-#define AppVersion "1.0.3"
+#define AppVersion "1.0.4"
 #define AppPublisher "4xon"
 #define ProviderClsid "{4AB9224A-8A69-44A2-B65A-F1BB0D7AF38E}"
 #define ThumbnailHandlerIid "{e357fccd-a995-4576-b01f-234630154e96}"
@@ -42,28 +42,24 @@ VersionInfoProductVersion={#AppVersion}.0
 VersionInfoCopyright=Copyright (C) 2026 {#AppPublisher}
 
 [Files]
-Source: "..\bin\x64\Release\net48\DdsThumbnailProvider.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
-Source: "..\bin\x64\Release\net48\Pfim.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
-Source: "..\bin\x64\Release\net48\SharpShell.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
+; Keep each release in its own directory. Explorer's isolated thumbnail host may
+; still have the previous DLL mapped after it is unregistered, so overwriting a
+; shared path during an upgrade is neither necessary nor safe.
+Source: "..\bin\x64\Release\net48\DdsThumbnailProvider.dll"; DestDir: "{app}\{#AppVersion}"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "..\bin\x64\Release\net48\Pfim.dll"; DestDir: "{app}\{#AppVersion}"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "..\bin\x64\Release\net48\SharpShell.dll"; DestDir: "{app}\{#AppVersion}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "..\bin\x64\Release\net48\ServerRegistrationManager.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [UninstallRun]
-Filename: "{app}\ServerRegistrationManager.exe"; Parameters: "uninstall ""{app}\DdsThumbnailProvider.dll"" -os64"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterDdsThumbnailProvider"
+Filename: "{app}\ServerRegistrationManager.exe"; Parameters: "uninstall ""{app}\{#AppVersion}\DdsThumbnailProvider.dll"" -os64"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterDdsThumbnailProvider"
 
 [Code]
 const
   DotNet48Release = 528040;
   ProviderClsid = '{#ProviderClsid}';
   ThumbnailHandlerIid = '{#ThumbnailHandlerIid}';
-
-procedure SHChangeNotify(
-  EventId: LongWord;
-  Flags: LongWord;
-  Item1: LongWord;
-  Item2: LongWord);
-  external 'SHChangeNotify@shell32.dll stdcall';
 
 function IsDotNet48Installed: Boolean;
 var
@@ -88,13 +84,34 @@ end;
 
 function UnregisterExistingProvider: Boolean;
 var
+  CodeBase: String;
   ResultCode: Integer;
   RegistrationManager: String;
   ProviderDll: String;
 begin
   Result := True;
   RegistrationManager := ExpandConstant('{app}\ServerRegistrationManager.exe');
-  ProviderDll := ExpandConstant('{app}\DdsThumbnailProvider.dll');
+
+  { Read the currently registered CodeBase so upgrades work across both the old
+    shared layout and the new versioned layout. }
+  if RegQueryStringValue(
+    HKEY_LOCAL_MACHINE_64,
+    'SOFTWARE\Classes\CLSID\' + ProviderClsid + '\InprocServer32',
+    'CodeBase',
+    CodeBase) then
+  begin
+    ProviderDll := CodeBase;
+    if Pos('file:///', Lowercase(ProviderDll)) = 1 then
+      Delete(ProviderDll, 1, 8);
+    StringChangeEx(ProviderDll, '/', '\', True);
+    StringChangeEx(ProviderDll, '%20', ' ', True);
+  end
+  else
+    ProviderDll := ExpandConstant('{app}\DdsThumbnailProvider.dll');
+
+  { The first installer stored the registration tool beside the provider. }
+  if not FileExists(RegistrationManager) then
+    RegistrationManager := ExtractFileDir(ProviderDll) + '\ServerRegistrationManager.exe';
 
   if FileExists(RegistrationManager) and FileExists(ProviderDll) then
     Result := Exec(
@@ -125,7 +142,7 @@ var
   RegistryPath: String;
 begin
   RegistrationManager := ExpandConstant('{app}\ServerRegistrationManager.exe');
-  ProviderDll := ExpandConstant('{app}\DdsThumbnailProvider.dll');
+  ProviderDll := ExpandConstant('{app}\{#AppVersion}\DdsThumbnailProvider.dll');
   Result := Exec(
     RegistrationManager,
     'install "' + ProviderDll + '" -codebase -os64',
@@ -142,12 +159,15 @@ begin
       RegistryPath,
       '',
       RegisteredClsid) and (CompareText(RegisteredClsid, ProviderClsid) = 0);
-  end;
-end;
 
-procedure NotifyAssociationChanged;
-begin
-  SHChangeNotify($08000000, 0, 0, 0);
+    { Thumbnail handlers are isolated by default. Explicitly remove the legacy
+      opt-out value in case an older/debug install left it enabled. }
+    if Result then
+      RegDeleteValue(
+        HKEY_LOCAL_MACHINE_64,
+        'SOFTWARE\Classes\CLSID\' + ProviderClsid,
+        'DisableProcessIsolation');
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -160,22 +180,12 @@ begin
     begin
       Exec(
         ExpandConstant('{app}\ServerRegistrationManager.exe'),
-        'uninstall "' + ExpandConstant('{app}\DdsThumbnailProvider.dll') + '" -os64',
+        'uninstall "' + ExpandConstant('{app}\{#AppVersion}\DdsThumbnailProvider.dll') + '" -os64',
         ExpandConstant('{app}'),
         SW_HIDE,
         ewWaitUntilTerminated,
         ResultCode);
       RaiseException('The DDS thumbnail provider could not be registered. No shell extension was installed.');
     end;
-
-    NotifyAssociationChanged;
-  end;
-end;
-
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-begin
-  if CurUninstallStep = usPostUninstall then
-  begin
-    NotifyAssociationChanged;
   end;
 end;

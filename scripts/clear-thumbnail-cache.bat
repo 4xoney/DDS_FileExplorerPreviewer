@@ -1,14 +1,13 @@
 @echo off
 setlocal EnableExtensions
 
-echo This closes Explorer and deletes the current user's Windows thumbnail cache.
+echo This requests a thumbnail refresh without stopping Windows Explorer.
 choice /C YN /M "Continue"
 if errorlevel 2 exit /b 0
 
-taskkill /F /IM explorer.exe >nul 2>&1
-timeout /t 1 /nobreak >nul
 del /F /Q "%LocalAppData%\Microsoft\Windows\Explorer\thumbcache_*.db" >nul 2>&1
-start "" explorer.exe
+if exist "%SystemRoot%\System32\ie4uinit.exe" "%SystemRoot%\System32\ie4uinit.exe" -show >nul 2>&1
 
-echo Thumbnail cache cleared.
+echo Thumbnail refresh requested. Windows may keep cache files that are in use.
+echo If an old thumbnail remains, sign out and back in instead of force-closing Explorer.
 pause

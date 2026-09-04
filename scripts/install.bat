@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
 fltmc >nul 2>&1
 if errorlevel 1 (
@@ -9,9 +9,14 @@ if errorlevel 1 (
 )
 
 set "SOURCE_DIR=%~dp0..\bin\x64\Release\net48"
-set "INSTALL_DIR=%ProgramFiles%\DdsThumbnailProvider"
-set "PROVIDER_DLL=%INSTALL_DIR%\DdsThumbnailProvider.dll"
+set "INSTALL_DIR=%ProgramFiles%\DDS Thumbnail Provider"
+set "PAYLOAD_DIR=%INSTALL_DIR%\payload-%RANDOM%-%RANDOM%"
+set "PROVIDER_DLL=%PAYLOAD_DIR%\DdsThumbnailProvider.dll"
 set "SRM=%INSTALL_DIR%\ServerRegistrationManager.exe"
+set "OLD_PROVIDER="
+set "OLD_SRM="
+set "APP_VERSION=1.0.4"
+set "ASSEMBLY_VERSION="
 
 if not exist "%SOURCE_DIR%\DdsThumbnailProvider.dll" (
     echo ERROR: Release build not found.
@@ -20,15 +25,41 @@ if not exist "%SOURCE_DIR%\DdsThumbnailProvider.dll" (
     exit /b 1
 )
 
-if exist "%PROVIDER_DLL%" if exist "%SRM%" (
-    "%SRM%" uninstall "%PROVIDER_DLL%" -os64 >nul 2>&1
+for /f "usebackq delims=" %%V in (`powershell.exe -NoProfile -Command "[Reflection.AssemblyName]::GetAssemblyName('%SOURCE_DIR%\DdsThumbnailProvider.dll').Version.ToString()"`) do set "ASSEMBLY_VERSION=%%V"
+if not "%ASSEMBLY_VERSION%"=="%APP_VERSION%.0" (
+    echo ERROR: Release build version is %ASSEMBLY_VERSION%; install script version is %APP_VERSION%.
+    echo Run scripts\build-release.bat first.
+    pause
+    exit /b 1
 )
 
-taskkill /F /IM explorer.exe >nul 2>&1
-timeout /t 1 /nobreak >nul
+for /f "tokens=2,*" %%A in ('reg.exe query "HKLM\SOFTWARE\Classes\CLSID\{4AB9224A-8A69-44A2-B65A-F1BB0D7AF38E}\InprocServer32" /v CodeBase 2^>nul ^| findstr.exe /I /C:"CodeBase"') do set "OLD_PROVIDER=%%B"
+if defined OLD_PROVIDER (
+    set "OLD_PROVIDER=!OLD_PROVIDER:file:///=!"
+    set "OLD_PROVIDER=!OLD_PROVIDER:/=\!"
+    set "OLD_PROVIDER=!OLD_PROVIDER:%%20= !"
 
-if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
-xcopy "%SOURCE_DIR%\*" "%INSTALL_DIR%\" /E /I /Y /Q >nul
+    if exist "%SRM%" set "OLD_SRM=%SRM%"
+    if not defined OLD_SRM for %%I in ("!OLD_PROVIDER!") do if exist "%%~dpIServerRegistrationManager.exe" set "OLD_SRM=%%~dpIServerRegistrationManager.exe"
+
+    if defined OLD_SRM if exist "!OLD_PROVIDER!" (
+        "!OLD_SRM!" uninstall "!OLD_PROVIDER!" -os64 >nul 2>&1
+        if errorlevel 1 (
+            echo ERROR: The existing DDS thumbnail provider could not be unregistered.
+            pause
+            exit /b 1
+        )
+    )
+)
+
+if not exist "%PAYLOAD_DIR%" mkdir "%PAYLOAD_DIR%"
+copy /Y "%SOURCE_DIR%\DdsThumbnailProvider.dll" "%PAYLOAD_DIR%\" >nul
+if errorlevel 1 goto :failed
+copy /Y "%SOURCE_DIR%\Pfim.dll" "%PAYLOAD_DIR%\" >nul
+if errorlevel 1 goto :failed
+copy /Y "%SOURCE_DIR%\SharpShell.dll" "%PAYLOAD_DIR%\" >nul
+if errorlevel 1 goto :failed
+copy /Y "%SOURCE_DIR%\ServerRegistrationManager.exe" "%INSTALL_DIR%\" >nul
 if errorlevel 1 goto :failed
 
 "%SRM%" install "%PROVIDER_DLL%" -codebase -os64
@@ -40,18 +71,18 @@ if errorlevel 1 (
     goto :failed
 )
 
-del /F /Q "%LocalAppData%\Microsoft\Windows\Explorer\thumbcache_*.db" >nul 2>&1
+reg.exe delete "HKLM\SOFTWARE\Classes\CLSID\{4AB9224A-8A69-44A2-B65A-F1BB0D7AF38E}" /v DisableProcessIsolation /f >nul 2>&1
 
-start "" explorer.exe
 echo.
-echo DDS thumbnail provider 1.0.2 installed successfully.
+echo DDS thumbnail provider %APP_VERSION% installed successfully.
 echo Open a folder containing DDS files and choose a large-icon view.
 pause
 exit /b 0
 
 :failed
-start "" explorer.exe
+if exist "%PROVIDER_DLL%" if exist "%SRM%" "%SRM%" uninstall "%PROVIDER_DLL%" -os64 >nul 2>&1
+if exist "%PAYLOAD_DIR%" rmdir /S /Q "%PAYLOAD_DIR%" >nul 2>&1
 echo.
-echo ERROR: Installation failed. Explorer has been restarted.
+echo ERROR: Installation failed. Explorer was not stopped or restarted.
 pause
 exit /b 1
